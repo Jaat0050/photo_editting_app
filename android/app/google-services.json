@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "28781935793",
+    "firebase_url": "https://assignment21-19f46-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "assignment21-19f46",
+    "storage_bucket": "assignment21-19f46.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:28781935793:android:1c8df195694145fa96f690",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application_2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDpZI0Rawx3mgdQNWbmCXuvmALkLe4Oljk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

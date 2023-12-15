@@ -1,0 +1,42 @@
+name: flutter_application_2
+description: "A new Flutter project."
+publish_to: 'none' 
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.3 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  flutter_colorpicker: ^1.0.3
+  firebase_core: ^2.24.2
+  cloud_firestore: ^4.13.6
+  firebase_analytics: ^10.7.4
+  firebase_storage: ^11.5.6
+  image_picker: ^1.0.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - images/
+  fonts:
+    - family: Roboto
+      fonts:
+        - asset: fonts/Roboto-Regular.ttf
+    - family: Lora
+      fonts:
+        - asset: fonts/Lora-Regular.ttf
+    - family: Charm
+      fonts:
+        - asset: fonts/Charm-Regular.ttf
+
+
