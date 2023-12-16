@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:flutter_application_2/home/home.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_application_2/utils/text_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -16,11 +17,9 @@ class FirestoreService {
       'texts': textDataList.map((textData) => textData.toJson()).toList(),
       if (imageUrl != null) 'imageUrl': imageUrl,
     });
-
-    // Print the document ID for reference
-    print('id= ${documentId}');
-
-    // await SharedPreferencesHelper.incrementCounter();
+    if (kDebugMode) {
+      print('docId : $documentId');
+    }
   }
 
   Stream<List<TextData>> getTextData(String documentId) {
@@ -73,8 +72,9 @@ class FirestoreService {
         await reference.delete();
       }
     } catch (e) {
-      print('Error clearing Firebase Storage: $e');
-      // Handle the error as needed
+      if (kDebugMode) {
+        print('Error clearing Firebase Storage: $e');
+      }
     }
   }
 
@@ -85,11 +85,15 @@ class FirestoreService {
       if (snapshot.exists) {
         return snapshot['imageUrl'] as String?;
       } else {
-        print('Document does not exist');
+        if (kDebugMode) {
+          print('Document does not exist');
+        }
         return null;
       }
     } catch (e) {
-      print('Error getting image URL: $e');
+      if (kDebugMode) {
+        print('Error getting image URL: $e');
+      }
       return null;
     }
   }
