@@ -1,12 +1,14 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_2/home.dart';
+import 'package:flutter_application_2/home/home.dart';
+import 'package:flutter_application_2/utils/shared_helper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
+    await SharedPreferencesHelper.initialize();
     await Firebase.initializeApp(
-      options: FirebaseOptions(
+      options: const FirebaseOptions(
         apiKey: "AIzaSyDpZI0Rawx3mgdQNWbmCXuvmALkLe4Oljk",
         authDomain: "assignment21-19f46.firebaseapp.com",
         databaseURL:

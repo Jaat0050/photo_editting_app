@@ -1,6 +1,12 @@
+import 'dart:io';
+
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_2/server.dart';
+import 'package:flutter_application_2/utils/server.dart';
+import 'package:flutter_application_2/utils/shared_helper.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:image_picker/image_picker.dart';
 
 class Home extends StatefulWidget {
   const Home({super.key});
@@ -11,25 +17,39 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   final FirestoreService firestoreService = FirestoreService();
-  List<List<List<TextData>>> _undoStack = [];
-  List<List<List<TextData>>> _redoStack = [];
+  final List<List<List<TextData>>> _undoStack = [];
+  final List<List<List<TextData>>> _redoStack = [];
 
-  List<String> _documentIds = [];
+  Image? _selectedImage;
+  XFile? _pickedFile;
 
-  List<TextData> _texts = [
-    // Initialize _texts here
-    // TextData(
-    //   position: const Offset(100, 100),
-    //   text: 'Stay positive, be brave, and keep moving forward.',
-    //   fontSize: 24.0,
-    //   color: Colors.white,
-    //   textAlign: TextAlign.center,
-    //   fontWeight: FontWeight.normal,
-    //   fontFamily: 'Roboto',
-    //   alignmentSelections: [true, false, false],
-    //   lineHeight: 1.0,
-    // ),
-  ];
+  final CollectionReference textCollection =
+      FirebaseFirestore.instance.collection('texts');
+
+  // List<String> _documentIds = [];
+  // int _counter = 1;
+
+  List<TextData> _texts = [];
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile != null) {
+      setState(() {
+        _selectedImage = Image.file(File(pickedFile.path));
+        _pickedFile = pickedFile;
+      });
+    }
+  }
+
+  void _resetApp() {
+    setState(() {
+      _texts = [];
+      _selectedImage = null;
+    });
+    _updateUndoRedoStack();
+  }
 
   void _updateUndoRedoStack() {
     _undoStack.add(List.generate(_texts.length, (index) => List.from(_texts)));
@@ -171,54 +191,110 @@ class _HomeState extends State<Home> {
     });
   }
 
-  void _updateFirestore() {
-    print('kkkkk');
-    firestoreService.addTextData(_texts);
+  Future<String?> _uploadImage(File imageFile, String documentId) async {
+    try {
+      final Reference storageReference =
+          FirebaseStorage.instance.ref().child('images/$documentId.jpg');
+      final UploadTask uploadTask = storageReference.putFile(imageFile);
+      await uploadTask.whenComplete(() => null);
+      return await storageReference.getDownloadURL();
+    } catch (e) {
+      print('Error uploading image: $e');
+      return null;
+    }
+  }
+
+  Future<void> _updateFirestore() async {
+    int documentNumber = await SharedPreferencesHelper.getCounter();
+    String documentId = '$documentNumber';
+    // Upload the image and get its download URL
+    String? imageUrl;
+    if (_pickedFile != null) {
+      imageUrl = await _uploadImage(File(_pickedFile!.path), documentId);
+    }
+    // Save text data along with image URL to Firestore
+    firestoreService.addTextData(documentId, _texts, imageUrl);
+    await SharedPreferencesHelper.incrementCounter();
+  }
+
+  void _fetchDataFromFirebaseAndClearSharedPreferences1() async {
+    try {
+      print('delete');
+      // Clear all data from the "texts" collection in Firebase
+      await firestoreService.clearTextsCollection();
+      // Clear all images from the "images" collection in storage
+      await firestoreService.clearFirebaseStorage();
+      // Clear SharedPreferences
+      await SharedPreferencesHelper.clearCounter();
+      // Delete images from storage
+      List<String> documentIds = await firestoreService.getAllDocumentIds();
+      for (String documentId in documentIds) {
+        String? imageUrl = await firestoreService.getImageUrl(documentId);
+        if (imageUrl != null) {
+          await FirebaseStorage.instance.refFromURL(imageUrl).delete();
+        }
+      }
+      // Update the state with an empty list
+      setState(() {
+        _texts = [];
+        _selectedImage = null;
+      });
+    } catch (e) {
+      print('Error deleting data and images: $e');
+      // Handle the error as needed
+    }
+  }
+
+  void _fetchDataFromFirebaseAndClearSharedPreferences(
+      String documentId) async {
+    print('next');
+    firestoreService.getTextData(documentId).listen((data) {
+      setState(() {
+        _texts = data;
+      });
+    });
+    // Fetch image URL for the selected document ID
+    firestoreService.getImageUrl(documentId).then((imageUrl) {
+      if (imageUrl != null) {
+        setState(() {
+          _selectedImage = Image.network(imageUrl, fit: BoxFit.cover);
+        });
+      } else {
+        setState(() {
+          _selectedImage = null;
+        });
+      }
+    });
+  }
+
+  Future<void> clearTextsCollection() async {
+    QuerySnapshot querySnapshot = await textCollection.get();
+    for (QueryDocumentSnapshot doc in querySnapshot.docs) {
+      await textCollection.doc(doc.id).delete();
+    }
   }
 
   @override
   void initState() {
-    // TODO: implement initState
     super.initState();
     _updateUndoRedoStack();
     _updateUndoRedoStackWithTextData(_texts);
-    // Listen for real-time updates
-    // firestoreService.getTextData().listen((data) {
-    //   setState(() {
-    //     _texts = data;
-    //   });
-    // });
-    _loadDocumentIds();
-  }
-
-  // void _loadDocumentIds() async {
-  //   Stream<List<String>> documentIdsStream =
-  //       await firestoreService.getDocumentIdsStream();
-
-  //   documentIdsStream.listen((List<String> documentIds) {
-  //     setState(() {
-  //       _documentIds = documentIds;
-  //     });
-  //   });
-  // }
-  void _loadDocumentIds() async {
-    Stream<List<String>> documentIdsStream =
-        await firestoreService.getDocumentIdsStream();
-
-    documentIdsStream.listen((List<String> documentIds) {
-      setState(() {
-        _documentIds = documentIds;
-      });
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My App'),
-        backgroundColor: Colors.grey,
+        // title: const Text('My App'),
+        backgroundColor: Colors.grey[200],
+        elevation: 10,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.add_photo_alternate),
+            onPressed: () {
+              _pickImage(); // Function to pick an image
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.save),
             onPressed: _updateFirestore,
@@ -235,18 +311,35 @@ class _HomeState extends State<Home> {
             icon: const Icon(Icons.add),
             onPressed: _addText,
           ),
+          IconButton(
+            icon: const Icon(Icons.replay_circle_filled_rounded),
+            onPressed: () {
+              // Reset the app to its initial state
+              _resetApp();
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () async {
+              // Fetch data from Firebase and clear SharedPreferences
+              _fetchDataFromFirebaseAndClearSharedPreferences1();
+            },
+          ),
         ],
       ),
       body: Container(
         height: MediaQuery.of(context).size.height,
         width: MediaQuery.of(context).size.width,
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage(
-              'images/pic.jpg',
-            ),
-            fit: BoxFit.cover,
-          ),
+        decoration: BoxDecoration(
+          image: _selectedImage != null
+              ? DecorationImage(
+                  image: _selectedImage!.image,
+                  fit: BoxFit.cover,
+                )
+              : const DecorationImage(
+                  image: AssetImage('images/pic.jpg'),
+                  fit: BoxFit.cover,
+                ),
         ),
         child: Stack(
           children: _texts.map((textData) {
@@ -274,16 +367,6 @@ class _HomeState extends State<Home> {
                           ),
                           textAlign: textData.textAlign,
                         ),
-                        // Positioned(
-                        //   top: -10,
-                        //   right: -10,
-                        //   child: GestureDetector(
-                        //     onTap: () =>
-                        //         _showRemoveDialog(_texts.indexOf(textData)),
-                        //     child: const Icon(Icons.close,
-                        //         size: 30, color: Colors.red),
-                        //   ),
-                        // ),
                       ],
                     ),
                   ),
@@ -295,82 +378,111 @@ class _HomeState extends State<Home> {
         ),
       ),
       drawer: Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            DrawerHeader(
-              decoration: BoxDecoration(
-                color: Colors.blue,
-              ),
-              child: Text(
-                'Document IDs',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
+        width: 250,
+        backgroundColor: Colors.white,
+        elevation: 10,
+        shadowColor: Colors.black,
+        child: FutureBuilder<List<String>>(
+          future: firestoreService.getAllDocumentIds(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const CircularProgressIndicator(
+                // strokeWidth: 20,
+                color: Colors.black,
+              );
+            } else if (snapshot.hasError) {
+              return Text('Error: ${snapshot.error}');
+            } else {
+              List<String> sortedDocumentIds = snapshot.data!;
+              sortedDocumentIds.sort(
+                (a, b) => int.parse(a).compareTo(
+                  int.parse(b),
                 ),
-              ),
-            ),
-            for (String documentId in _documentIds)
-              ListTile(
-                title: Text(documentId),
-                // onTap: () {
-                //   // Fetch texts for the selected document ID
-                //   setState(() {
-                //     _texts = []; // Clear existing texts
-                //   });
+              ); // Parse and sort document IDs as integers
+              return ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(40),
+                    decoration: BoxDecoration(
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.grey.withOpacity(0.5),
+                          spreadRadius: 1,
+                          blurRadius: 5,
+                          offset:
+                              const Offset(0, 3), // changes position of shadow
+                        ),
+                      ],
+                      color: Colors.red[100],
+                    ),
+                    child: const Text(
+                      'Documents',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontFamily: 'Charm',
+                        fontSize: 24,
+                      ),
+                    ),
+                  ),
+                  for (int i = 0; i < sortedDocumentIds.length; i++)
+                    InkWell(
+                      hoverColor: Colors.red,
+                      onTap: () {
+                        _fetchDataFromFirebaseAndClearSharedPreferences(
+                            sortedDocumentIds[i]);
+                        // Fetch texts for the selected document ID
+                        setState(() {
+                          _texts = []; // Clear existing texts
+                        });
 
-                //   firestoreService.getTextData(documentId).listen((data) {
-                //     setState(() {
-                //       _texts = data;
-                //     });
-                //   });
+                        firestoreService
+                            .getTextData(sortedDocumentIds[i])
+                            .listen((data) {
+                          setState(() {
+                            _texts = data;
+                          });
+                        });
 
-                //   Navigator.pop(context); // Close the drawer
-                // },
-                onTap: () {
-                  // Fetch texts for the selected document ID
-                  setState(() {
-                    _texts = []; // Clear existing texts
-                  });
-
-                  firestoreService.getTextData(documentId).listen((data) {
-                    setState(() {
-                      _texts = data;
-                    });
-                  });
-
-                  Navigator.pop(context); // Close the drawer
-                },
-              ),
-          ],
+                        Navigator.pop(context); // Close the drawer
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.grey.withOpacity(0.5),
+                              spreadRadius: 1,
+                              blurRadius: 5,
+                              offset: const Offset(
+                                  0, 3), // changes position of shadow
+                            ),
+                          ],
+                        ),
+                        margin: const EdgeInsets.all(8.0),
+                        child: ListTile(
+                          hoverColor: Colors.red,
+                          tileColor: Colors.white,
+                          title: Center(
+                            child: Text(
+                              'document: ${sortedDocumentIds[i]}',
+                              style: const TextStyle(
+                                fontFamily: 'Lora',
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            }
+          },
         ),
       ),
     );
   }
 }
-
-// class TextData {
-//   Offset position;
-//   String text;
-//   double fontSize;
-//   Color color;
-//   TextAlign textAlign;
-//   FontWeight fontWeight;
-//   String fontFamily;
-//   List<bool> alignmentSelections;
-//   double lineHeight;
-
-//   TextData(
-//       {required this.position,
-//       required this.text,
-//       required this.fontSize,
-//       required this.color,
-//       required this.textAlign,
-//       required this.fontWeight,
-//       required this.fontFamily,
-//       required this.alignmentSelections,
-//       required this.lineHeight});
-// }
 
 class TextData {
   Offset position;
@@ -382,17 +494,20 @@ class TextData {
   String fontFamily;
   List<bool> alignmentSelections;
   double lineHeight;
+  String? imageUrl;
 
-  TextData(
-      {required this.position,
-      required this.text,
-      required this.fontSize,
-      required this.color,
-      required this.textAlign,
-      required this.fontWeight,
-      required this.fontFamily,
-      required this.alignmentSelections,
-      required this.lineHeight});
+  TextData({
+    required this.position,
+    required this.text,
+    required this.fontSize,
+    required this.color,
+    required this.textAlign,
+    required this.fontWeight,
+    required this.fontFamily,
+    required this.alignmentSelections,
+    required this.lineHeight,
+    this.imageUrl,
+  });
 
   factory TextData.fromJson(Map<String, dynamic> json) {
     return TextData(
@@ -405,21 +520,23 @@ class TextData {
       fontFamily: json['fontFamily'],
       alignmentSelections: List<bool>.from(json['alignmentSelections']),
       lineHeight: json['lineHeight'],
+      imageUrl: json['imageUrl'],
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'dx': this.position.dx,
-      'dy': this.position.dy,
-      'text': this.text,
-      'fontSize': this.fontSize,
-      'color': this.color.value,
-      'textAlign': this.textAlign.index,
-      'fontWeight': this.fontWeight.index,
-      'fontFamily': this.fontFamily,
-      'alignmentSelections': this.alignmentSelections,
-      'lineHeight': this.lineHeight,
+      'dx': position.dx,
+      'dy': position.dy,
+      'text': text,
+      'fontSize': fontSize,
+      'color': color.value,
+      'textAlign': textAlign.index,
+      'fontWeight': fontWeight.index,
+      'fontFamily': fontFamily,
+      'alignmentSelections': alignmentSelections,
+      'lineHeight': lineHeight,
+      'imageUrl': imageUrl,
     };
   }
 }
